@@ -21,13 +21,14 @@ from utils.prompts import get_system_prompt, list_available_prompts, get_prompts
 dotenv.load_dotenv()
 
 # Database configuration
-DB_HOST = os.getenv("PGHOST", "localhost")
-DB_PORT = os.getenv("PGPORT", "5432")
-DB_NAME = os.getenv("PGDATABASE", "embeddings")
-DB_USER = os.getenv("PGUSER", "imad")
-DB_PASSWORD = os.getenv("PGPASSWORD", "123456789")
-EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "nomic-embed-text")
-LLM_URL = os.getenv("LLM_URL", "http://localhost:11434")
+DB_HOST = os.getenv("PGHOST")
+DB_PORT = os.getenv("PGPORT")
+DB_NAME = os.getenv("PGDATABASE")
+DB_USER = os.getenv("PGUSER")
+DB_PASSWORD = os.getenv("PGPASSWORD")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL")
+LLM_URL = os.getenv("LLM_URL")
+CHAT_MODEL= os.getenv("CHAT_MODEL")
 
 # Global vector store and index
 vector_store = None
@@ -49,7 +50,7 @@ async def initialize_llamaindex():
     
     # Configure Ollama LLM for query engine
     llm = Ollama(
-        model="gemma3:1b",  # Use a small fast model for queries
+        model=CHAT_MODEL,  # Use a small fast model for queries
         base_url=LLM_URL,
         request_timeout=30.0,
     )

@@ -5,14 +5,53 @@ import uvicorn
 from utils.pandoc_supported import pandoc_supported
 from utils.embed import generate_embedding
 from utils.extractors.doc_extractor import doc_extractor
+from contextlib import asynccontextmanager
+import asyncpg
+import os
+
+# Database configuration
+DB_HOST = os.getenv("PGHOST")
+DB_PORT = os.getenv("PGPORT")
+DB_NAME = os.getenv("PGDATABASE")
+DB_USER = os.getenv("PGUSER")
+DB_PASSWORD = os.getenv("PGPASSWORD")
+
+print(DB_HOST, DB_PORT, DB_NAME, DB_USER, DB_PASSWORD)
+
+# Global connection pool
+db_pool = None
+
+async def create_pool():
+    """Create database connection pool"""
+    return await asyncpg.create_pool(
+        host=DB_HOST,
+        port=DB_PORT,
+        database=DB_NAME,
+        user=DB_USER,
+        password=DB_PASSWORD,
+        min_size=2,
+        max_size=10
+    )
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Manage application lifespan events"""
+    global db_pool
+    # Startup: Create connection pool
+    db_pool = await create_pool()
+    print("Database connection pool created")
+    yield
+    # Shutdown: Close connection pool
+    await db_pool.close()
+    print("Database connection pool closed")
 
 # Directory to store uploaded files
 UPLOAD_DIR = Path("uploads")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Initialize FastAPI app
-app = FastAPI(title="Upload & Embeddings API")
-
+app = FastAPI(title="Upload & Embeddings API", lifespan=lifespan)
 
 @app.post("/upload")
 async def upload_file(file: UploadFile = File(...)):
@@ -46,7 +85,6 @@ async def upload_file(file: UploadFile = File(...)):
             "filename": file.filename,
             "content_type": file.content_type,
             "size_bytes": destination.stat().st_size,
-            "content": content,
             "embeddings": embeddings
         }
     )

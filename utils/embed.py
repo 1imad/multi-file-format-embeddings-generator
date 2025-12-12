@@ -6,7 +6,7 @@ import requests
 
 dotenv.load_dotenv()
 EMBEDDING_URL = os.getenv("EMBEDDING_URL")
-EMBEDDING_MODEL = os.getenv("EMBEDDINFG_MODEL")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL")
 
 def generate_embedding(text: str) -> List[float]:
     """

@@ -1,6 +1,7 @@
 from pathlib import Path
 from fastapi import FastAPI, UploadFile, File, HTTPException, Body
 from fastapi.responses import JSONResponse, StreamingResponse
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional
 import uvicorn
@@ -96,6 +97,15 @@ UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
 # Initialize FastAPI app
 app = FastAPI(title="LlamaIndex Upload & Embeddings API", lifespan=lifespan)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:5173", "http://localhost:3000", "http://127.0.0.1:5173", "http://127.0.0.1:3000"],  # Vite's default port
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # Pydantic models for request/response
 class ChatMessage(BaseModel):
@@ -339,6 +349,134 @@ async def get_specific_prompt(prompt_type: str):
             "prompt_text": get_system_prompt(prompt_type)
         }
     )
+
+@app.get("/files")
+async def list_files():
+    """
+    List all unique files that have embeddings stored in the vector store.
+    Returns a list of filenames with their metadata.
+    """
+    try:
+        # Query the database directly to get unique files
+        import asyncpg
+        
+        conn = await asyncpg.connect(
+            host=DB_HOST,
+            port=int(DB_PORT),
+            database=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD
+        )
+        
+        # Get unique filenames with their metadata
+        query = """
+            SELECT DISTINCT 
+                metadata_->>'filename' as filename,
+                metadata_->>'content_type' as content_type,
+                metadata_->>'file_size' as file_size,
+                metadata_->>'file_path' as file_path,
+                COUNT(*) as chunk_count
+            FROM data_llamaindex_embeddings
+            WHERE metadata_->>'filename' IS NOT NULL
+            GROUP BY 
+                metadata_->>'filename',
+                metadata_->>'content_type',
+                metadata_->>'file_size',
+                metadata_->>'file_path'
+            ORDER BY metadata_->>'filename'
+        """
+        
+        rows = await conn.fetch(query)
+        await conn.close()
+        
+        files = []
+        for row in rows:
+            files.append({
+                "filename": row['filename'],
+                "content_type": row['content_type'],
+                "file_size": int(row['file_size']) if row['file_size'] else None,
+                "file_path": row['file_path'],
+                "chunk_count": row['chunk_count']
+            })
+        
+        return JSONResponse(
+            content={
+                "files": files,
+                "total_files": len(files)
+            }
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to list files: {str(e)}"
+        )
+
+@app.delete("/files/{filename}")
+async def delete_file(filename: str):
+    """
+    Delete all embeddings associated with a specific file.
+    
+    Args:
+        filename: The name of the file to delete
+    """
+    try:
+        # Query the database directly to delete embeddings for this file
+        import asyncpg
+        
+        conn = await asyncpg.connect(
+            host=DB_HOST,
+            port=int(DB_PORT),
+            database=DB_NAME,
+            user=DB_USER,
+            password=DB_PASSWORD
+        )
+        
+        # Check if file exists
+        check_query = """
+            SELECT COUNT(*) as count
+            FROM data_llamaindex_embeddings
+            WHERE metadata_->>'filename' = $1
+        """
+        result = await conn.fetchrow(check_query, filename)
+        
+        if result['count'] == 0:
+            await conn.close()
+            raise HTTPException(
+                status_code=404,
+                detail=f"File '{filename}' not found in embeddings"
+            )
+        
+        # Delete all embeddings for this file
+        delete_query = """
+            DELETE FROM data_llamaindex_embeddings
+            WHERE metadata_->>'filename' = $1
+        """
+        deleted = await conn.execute(delete_query, filename)
+        await conn.close()
+        
+        # Also try to delete the physical file if it exists
+        file_path = UPLOAD_DIR / filename
+        if file_path.exists():
+            file_path.unlink()
+            physical_deleted = True
+        else:
+            physical_deleted = False
+        
+        return JSONResponse(
+            content={
+                "message": f"Successfully deleted embeddings for '{filename}'",
+                "filename": filename,
+                "embeddings_deleted": result['count'],
+                "physical_file_deleted": physical_deleted
+            }
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete file: {str(e)}"
+        )
 
 @app.get("/health")
 async def health_check():

@@ -11,7 +11,7 @@ import dotenv
 # LlamaIndex imports
 from llama_index.core import VectorStoreIndex, Document, StorageContext, Settings
 from llama_index.vector_stores.postgres import PGVectorStore
-from llama_index.embeddings.ollama import OllamaEmbedding
+from llama_index.embeddings.ollama import OllamaEmbedding  # Correct class name is OllamaEmbedding (singular)
 
 from utils.pandoc_supported import pandoc_supported
 from utils.extractors.pandoc import pandoc_extractor
